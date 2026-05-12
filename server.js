@@ -159,7 +159,10 @@ const adminMiddleware = async(req, res, next) => {
         return res.status(403).json({ error: "Invalid or expired token" });
     }
 };
-
+//app get 
+app.get("/", (req, res) => {
+    res.send("🚀 Backend is running successfully!");
+});
 // ========== AUTH APIs ==========
 
 app.post("/api/auth/register", async(req, res) => {

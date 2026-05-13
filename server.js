@@ -24,6 +24,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+app.get("/api/health", (req, res) => {
+    res.json({ status: 'ok', message: 'Server is running', timestamp: Date.now() });
+});
 
 // JWT Secret
 const JWT_SECRET = "your_super_secret_key_here";

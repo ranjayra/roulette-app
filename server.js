@@ -68,6 +68,9 @@ const gameSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'AuthUser', required: true },
     username: { type: String },
     selectedNumber: { type: Number, required: true },
+    selectedNumbers: { type: [Number], default: [] }, // ✅ NEW: multiple numbers
+    betPerNumber: { type: Number, default: 0 }, // ✅ NEW: per number bet
+    totalBetAmount: { type: Number, default: 0 }, // ✅ NEW: total bet amount
     winningNumber: { type: Number, required: true },
     result: { type: String, enum: ['win', 'lose'], required: true },
     bet: { type: Number, required: true },
@@ -321,6 +324,102 @@ app.post("/api/spin", authMiddleware, async(req, res) => {
 
     } catch (error) {
         console.log("❌ SPIN ERROR:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+});
+
+// ========== ✅ NEW: MULTIPLE NUMBERS SPIN API ==========
+app.post("/api/spin-multiple", authMiddleware, async(req, res) => {
+    try {
+        const { betPerNumber, selectedNumbers } = req.body;
+
+        // Validation
+        if (!betPerNumber || betPerNumber <= 0) {
+            return res.status(400).json({ error: "Invalid bet amount" });
+        }
+
+        if (!selectedNumbers || selectedNumbers.length === 0) {
+            return res.status(400).json({ error: "No numbers selected" });
+        }
+
+        const user = await AuthUser.findById(req.userId);
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const totalBet = betPerNumber * selectedNumbers.length;
+
+        if (!gameControlState.isActive) {
+            return res.status(400).json({ error: "Game is currently paused by admin" });
+        }
+
+        if (totalBet > user.balance) {
+            return res.status(400).json({ error: "Insufficient balance", balance: user.balance });
+        }
+
+        // Generate winning number (check forced win)
+        let winningNumber;
+        let isForcedWin = false;
+
+        if (forceWinState.isActive && forceWinState.winningNumber !== null) {
+            winningNumber = forceWinState.winningNumber;
+            isForcedWin = true;
+            console.log(`🎯 FORCED WIN ACTIVE! Winning number set to: ${winningNumber}`);
+            forceWinState.isActive = false;
+        } else {
+            winningNumber = Math.floor(Math.random() * 37);
+        }
+
+        // Check if user won
+        const isWin = selectedNumbers.includes(winningNumber);
+        let result = "lose";
+        let winAmount = 0;
+        let newBalance = user.balance - totalBet;
+
+        if (isWin) {
+            result = "win";
+            winAmount = betPerNumber * 35;
+            newBalance = user.balance + winAmount;
+            user.totalWins += 1;
+        } else {
+            user.totalLosses += 1;
+        }
+
+        user.totalGames += 1;
+        user.balance = newBalance;
+        await user.save();
+
+        // Save to history
+        const gameData = {
+            userId: user._id,
+            username: user.username,
+            selectedNumber: selectedNumbers[0], // first selected number for backward compatibility
+            selectedNumbers: selectedNumbers, // store all selected numbers
+            betPerNumber: Number(betPerNumber),
+            totalBetAmount: Number(totalBet),
+            winningNumber: Number(winningNumber),
+            result: result,
+            bet: Number(totalBet),
+            winAmount: Number(winAmount),
+            balanceAfter: Number(newBalance),
+            timestamp: new Date()
+        };
+
+        await Game.create(gameData);
+
+        res.json({
+            winningNumber: winningNumber,
+            result: result,
+            winAmount: winAmount,
+            balance: newBalance,
+            totalBet: totalBet,
+            betPerNumber: betPerNumber,
+            selectedNumbers: selectedNumbers,
+            isForcedWin: isForcedWin
+        });
+
+    } catch (error) {
+        console.log("❌ MULTI SPIN ERROR:", error);
         res.status(500).json({ message: "Server Error", error: error.message });
     }
 });

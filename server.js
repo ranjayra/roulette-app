@@ -1,8 +1,7 @@
 require("dotenv").config();
 const dns = require('dns');
-dns.setServers(['8.8.8.8', '1.1.1.1']); // Force Google DNS
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
-// Rest of your code... // Cloudflare aur Google DNS
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -17,13 +16,14 @@ app.use(cors({
         'http://localhost:3000',
         'http://localhost:3001',
         'http://127.0.0.1:3000',
-        'https://roulette-frontend-1.onrender.com'
+        'https://roulette-frontend-1.onrender.com',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+
 app.get("/api/health", (req, res) => {
     res.json({ status: 'ok', message: 'Server is running', timestamp: Date.now() });
 });
@@ -68,9 +68,9 @@ const gameSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'AuthUser', required: true },
     username: { type: String },
     selectedNumber: { type: Number, required: true },
-    selectedNumbers: { type: [Number], default: [] }, // ✅ NEW: multiple numbers
-    betPerNumber: { type: Number, default: 0 }, // ✅ NEW: per number bet
-    totalBetAmount: { type: Number, default: 0 }, // ✅ NEW: total bet amount
+    selectedNumbers: { type: [Number], default: [] },
+    betPerNumber: { type: Number, default: 0 },
+    totalBetAmount: { type: Number, default: 0 },
     winningNumber: { type: Number, required: true },
     result: { type: String, enum: ['win', 'lose'], required: true },
     bet: { type: Number, required: true },
@@ -170,10 +170,11 @@ const adminMiddleware = async(req, res, next) => {
         return res.status(403).json({ error: "Invalid or expired token" });
     }
 };
-//app get 
+
 app.get("/", (req, res) => {
     res.send("🚀 Backend is running successfully!");
 });
+
 // ========== AUTH APIs ==========
 
 app.post("/api/auth/register", async(req, res) => {
@@ -270,14 +271,12 @@ app.post("/api/spin", authMiddleware, async(req, res) => {
             return res.status(400).json({ error: "Insufficient balance", balance: user.balance });
         }
 
-        // Check for forced win
         let winningNumber;
         let isForcedWin = false;
 
         if (forceWinState.isActive && forceWinState.winningNumber !== null) {
             winningNumber = forceWinState.winningNumber;
             isForcedWin = true;
-            console.log(`🎯 FORCED WIN ACTIVE! Winning number set to: ${winningNumber}`);
             forceWinState.isActive = false;
         } else {
             winningNumber = Math.floor(Math.random() * 37);
@@ -300,27 +299,19 @@ app.post("/api/spin", authMiddleware, async(req, res) => {
         user.balance = newBalance;
         await user.save();
 
-        const gameData = {
+        await Game.create({
             userId: user._id,
             username: user.username,
             selectedNumber: Number(selectedNumber),
             winningNumber: Number(winningNumber),
-            result: result,
+            result,
             bet: Number(bet),
             winAmount: Number(winAmount),
             balanceAfter: Number(newBalance),
             timestamp: new Date()
-        };
-
-        await Game.create(gameData);
-
-        res.json({
-            winningNumber: winningNumber,
-            result: result,
-            winAmount: winAmount,
-            balance: newBalance,
-            isForcedWin: isForcedWin
         });
+
+        res.json({ winningNumber, result, winAmount, balance: newBalance, isForcedWin });
 
     } catch (error) {
         console.log("❌ SPIN ERROR:", error);
@@ -328,12 +319,11 @@ app.post("/api/spin", authMiddleware, async(req, res) => {
     }
 });
 
-// ========== ✅ NEW: MULTIPLE NUMBERS SPIN API ==========
+// ========== MULTIPLE NUMBERS SPIN API ==========
 app.post("/api/spin-multiple", authMiddleware, async(req, res) => {
     try {
         const { betPerNumber, selectedNumbers } = req.body;
 
-        // Validation
         if (!betPerNumber || betPerNumber <= 0) {
             return res.status(400).json({ error: "Invalid bet amount" });
         }
@@ -357,20 +347,17 @@ app.post("/api/spin-multiple", authMiddleware, async(req, res) => {
             return res.status(400).json({ error: "Insufficient balance", balance: user.balance });
         }
 
-        // Generate winning number (check forced win)
         let winningNumber;
         let isForcedWin = false;
 
         if (forceWinState.isActive && forceWinState.winningNumber !== null) {
             winningNumber = forceWinState.winningNumber;
             isForcedWin = true;
-            console.log(`🎯 FORCED WIN ACTIVE! Winning number set to: ${winningNumber}`);
             forceWinState.isActive = false;
         } else {
             winningNumber = Math.floor(Math.random() * 37);
         }
 
-        // Check if user won
         const isWin = selectedNumbers.includes(winningNumber);
         let result = "lose";
         let winAmount = 0;
@@ -389,34 +376,22 @@ app.post("/api/spin-multiple", authMiddleware, async(req, res) => {
         user.balance = newBalance;
         await user.save();
 
-        // Save to history
-        const gameData = {
+        await Game.create({
             userId: user._id,
             username: user.username,
-            selectedNumber: selectedNumbers[0], // first selected number for backward compatibility
-            selectedNumbers: selectedNumbers, // store all selected numbers
+            selectedNumber: selectedNumbers[0],
+            selectedNumbers,
             betPerNumber: Number(betPerNumber),
             totalBetAmount: Number(totalBet),
             winningNumber: Number(winningNumber),
-            result: result,
+            result,
             bet: Number(totalBet),
             winAmount: Number(winAmount),
             balanceAfter: Number(newBalance),
             timestamp: new Date()
-        };
-
-        await Game.create(gameData);
-
-        res.json({
-            winningNumber: winningNumber,
-            result: result,
-            winAmount: winAmount,
-            balance: newBalance,
-            totalBet: totalBet,
-            betPerNumber: betPerNumber,
-            selectedNumbers: selectedNumbers,
-            isForcedWin: isForcedWin
         });
+
+        res.json({ winningNumber, result, winAmount, balance: newBalance, totalBet, betPerNumber, selectedNumbers, isForcedWin });
 
     } catch (error) {
         console.log("❌ MULTI SPIN ERROR:", error);
@@ -499,7 +474,6 @@ app.post("/api/admin/login", async(req, res) => {
     }
 });
 
-// Set Forced Win Number
 app.post("/api/admin/set-forced-win", adminMiddleware, async(req, res) => {
     try {
         const { winningNumber } = req.body;
@@ -508,63 +482,34 @@ app.post("/api/admin/set-forced-win", adminMiddleware, async(req, res) => {
             return res.status(400).json({ error: "Invalid winning number" });
         }
 
-        forceWinState = {
-            isActive: true,
-            winningNumber: winningNumber,
-            setBy: req.admin.username,
-            setAt: new Date()
-        };
+        forceWinState = { isActive: true, winningNumber, setBy: req.admin.username, setAt: new Date() };
 
-        console.log(`🎮 Admin ${req.admin.username} set forced win to: ${winningNumber}`);
-
-        res.json({
-            success: true,
-            message: `Winner number set to ${winningNumber}`,
-            winningNumber: winningNumber
-        });
+        res.json({ success: true, message: `Winner number set to ${winningNumber}`, winningNumber });
     } catch (error) {
-        console.error("Error setting forced win:", error);
         res.status(500).json({ error: "Failed to set winner number" });
     }
 });
 
-// Disable Forced Win
 app.post("/api/admin/disable-forced-win", adminMiddleware, async(req, res) => {
     try {
-        forceWinState = {
-            isActive: false,
-            winningNumber: null,
-            setBy: null,
-            setAt: null
-        };
-
-        console.log(`🎮 Admin ${req.admin.username} disabled forced win mode`);
-
+        forceWinState = { isActive: false, winningNumber: null, setBy: null, setAt: null };
         res.json({ success: true, message: "Force mode disabled successfully" });
     } catch (error) {
         res.status(500).json({ error: "Failed to disable force mode" });
     }
 });
 
-// Get Forced Win Status
 app.get("/api/admin/forced-win-status", adminMiddleware, async(req, res) => {
     try {
-        res.json({
-            isActive: forceWinState.isActive,
-            winningNumber: forceWinState.winningNumber,
-            setBy: forceWinState.setBy,
-            setAt: forceWinState.setAt
-        });
+        res.json(forceWinState);
     } catch (error) {
         res.status(500).json({ error: "Failed to get status" });
     }
 });
 
-// Game Control APIs
 app.post("/api/admin/game-control", adminMiddleware, async(req, res) => {
     try {
         const { action } = req.body;
-
         if (action === 'start') {
             gameControlState.isActive = true;
             res.json({ success: true, message: "Game started" });
@@ -587,7 +532,6 @@ app.get("/api/admin/game-status", adminMiddleware, async(req, res) => {
     }
 });
 
-// Get All Users
 app.get("/api/admin/users", adminMiddleware, async(req, res) => {
     try {
         const users = await AuthUser.find().select("-password");
@@ -597,57 +541,40 @@ app.get("/api/admin/users", adminMiddleware, async(req, res) => {
     }
 });
 
-// Update User Balance
 app.put("/api/admin/users/:userId/balance", adminMiddleware, async(req, res) => {
     try {
         const { balance } = req.body;
-        const user = await AuthUser.findByIdAndUpdate(
-            req.params.userId, { balance }, { new: true }
-        ).select("-password");
+        const user = await AuthUser.findByIdAndUpdate(req.params.userId, { balance }, { new: true }).select("-password");
         res.json(user);
     } catch (error) {
         res.status(500).json({ error: "Server error" });
     }
 });
 
-// Toggle User Status
 app.patch("/api/admin/users/:userId/status", adminMiddleware, async(req, res) => {
     try {
         const { isActive } = req.body;
-        const user = await AuthUser.findByIdAndUpdate(
-            req.params.userId, { isActive }, { new: true }
-        ).select("-password");
+        const user = await AuthUser.findByIdAndUpdate(req.params.userId, { isActive }, { new: true }).select("-password");
         res.json(user);
     } catch (error) {
         res.status(500).json({ error: "Server error" });
     }
 });
 
-// Get Statistics
 app.get("/api/admin/stats", adminMiddleware, async(req, res) => {
     try {
         const totalUsers = await AuthUser.countDocuments();
         const activeUsers = await AuthUser.countDocuments({ isActive: true });
         const totalGames = await Game.countDocuments();
         const totalWins = await Game.countDocuments({ result: "win" });
+        const totalBetsResult = await Game.aggregate([{ $group: { _id: null, total: { $sum: "$bet" } } }]);
 
-        const totalBetsResult = await Game.aggregate([
-            { $group: { _id: null, total: { $sum: "$bet" } } }
-        ]);
-
-        res.json({
-            totalUsers,
-            activeUsers,
-            totalGames,
-            totalWins,
-            totalBets: totalBetsResult[0] ? totalBetsResult[0].total : 0
-        });
+        res.json({ totalUsers, activeUsers, totalGames, totalWins, totalBets: totalBetsResult[0] ? .total || 0 });
     } catch (error) {
         res.status(500).json({ error: "Server error" });
     }
 });
 
-// Test API
 app.get("/api/test", (req, res) => {
     res.json({ message: "Backend is working!", timestamp: new Date() });
 });
@@ -655,8 +582,17 @@ app.get("/api/test", (req, res) => {
 // ========== START SERVER ==========
 createDefaultAdmin();
 
-const PORT = 5000;
+// ✅ FIX 1: Render ke liye sahi PORT
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📡 Test API: http://localhost:${PORT}/api/test`);
 });
+
+// ✅ FIX 2: Server ko jagaye rakhne ke liye Keep-Alive ping
+const BACKEND_URL = "https://roulette-app-zov4.onrender.com";
+setInterval(() => {
+    fetch(`${BACKEND_URL}/api/health`)
+        .then(() => console.log("✅ Keep-alive ping sent"))
+        .catch(err => console.log("❌ Ping failed:", err.message));
+}, 14 * 60 * 1000); // har 14 minute mein ping

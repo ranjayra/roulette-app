@@ -569,7 +569,7 @@ app.get("/api/admin/stats", adminMiddleware, async(req, res) => {
         const totalWins = await Game.countDocuments({ result: "win" });
         const totalBetsResult = await Game.aggregate([{ $group: { _id: null, total: { $sum: "$bet" } } }]);
 
-        res.json({ totalUsers, activeUsers, totalGames, totalWins, totalBets: totalBetsResult[0] ? .total || 0 });
+        res.json({ totalUsers, activeUsers, totalGames, totalWins, totalBets: totalBetsResult[0] ? totalBetsResult[0].total : 0 });
     } catch (error) {
         res.status(500).json({ error: "Server error" });
     }
